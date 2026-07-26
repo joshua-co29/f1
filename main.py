@@ -119,7 +119,10 @@ from dotenv import load_dotenv  # Loads variables from .env to secure credential
 
 # Enable local caching for the FastF1 library. 
 # Telemetry files are heavy, so caching prevents rate-limits and speeds up responses.
-fastf1.Cache.enable_cache("f1_cache")
+cache_dir = "f1_cache"
+if not os.path.exists(cache_dir):
+    os.makedirs(cache_dir)
+fastf1.Cache.enable_cache(cache_dir)
 
 # Load environment variables from the local .env configuration file
 load_dotenv()
