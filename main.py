@@ -101,6 +101,7 @@ import logging                 # Used to record bot activity, warnings, and erro
 import os                      # Used to access local environment variables and filesystem details
 from datetime import datetime  # Used for handling current dates, session schedules, and timestamps
 import pytz                    # Used for timezone conversions and localized countdown calculations
+import json                    # Used for saving and loading channel binding configurations
 
 # ==============================================================================
 #                            THIRD-PARTY IMPORTS
@@ -159,6 +160,9 @@ async def on_ready():
     completes caching internal guild structures, and becomes ready.
     """
     print(f"We are ready to go in, {bot.user.name}")
+    # Start the background task if it hasn't been started already
+    if not hasattr(bot, 'update_weekend_task'):
+        bot.update_weekend_task = bot.loop.create_task(update_weekend_channel_task())
 
 
 @bot.event
@@ -222,13 +226,13 @@ async def assign(ctx, role: discord.Role, to: str, member: discord.Member):
     try:
         # Asynchronously assign the role to the target user
         await member.add_roles(role)
-        await ctx.send(f"✅ Successfully assigned **{role.name}** to **{member.display_name}**")
+        await ctx.send(f"[Success] Successfully assigned **{role.name}** to **{member.display_name}**")
     except discord.Forbidden:
         # Fails if the bot role's hierarchy position is lower than the target role
-        await ctx.send("❌ I don't have permission to assign that role. (Hint: Move my bot role higher in the settings!)")
+        await ctx.send("[Error] I don't have permission to assign that role. (Hint: Move my bot role higher in the settings!)")
     except Exception as e:
         # Handle and log generic errors
-        await ctx.send(f"❌ An error occurred: {e}")
+        await ctx.send(f"[Error] An error occurred: {e}")
 
 
 @bot.command()
@@ -250,12 +254,12 @@ async def remove(ctx, role: discord.Role, From: str, member: discord.Member):
     try:
         # Asynchronously remove the role from the target user
         await member.remove_roles(role)
-        await ctx.send(f"✅ Successfully removed **{role.name}** from **{member.display_name}**")
+        await ctx.send(f"[Success] Successfully removed **{role.name}** from **{member.display_name}**")
     except discord.Forbidden:
         # Fails if the bot's permission levels do not allow managing this role
-        await ctx.send("❌ I don't have permission to remove that role.")
+        await ctx.send("[Error] I don't have permission to remove that role.")
     except Exception as e:
-        await ctx.send(f"❌ An error occurred: {e}")
+        await ctx.send(f"[Error] An error occurred: {e}")
 
 
 @bot.command()
@@ -271,12 +275,12 @@ async def dm(ctx, member: discord.Member, *, msg):
     try:
         # Send message directly to target user
         await member.send(msg)
-        await ctx.send(f"📬 Sent a DM to **{member.display_name}**")
+        await ctx.send(f"[DM Sent] Sent a DM to **{member.display_name}**")
     except discord.Forbidden:
         # Fails if the user blocked the bot or has their server DMs locked
-        await ctx.send(f"🚫 I couldn't DM **{member.display_name}**. They might have their DMs closed.")
+        await ctx.send(f"[Blocked] I couldn't DM **{member.display_name}**. They might have their DMs closed.")
     except Exception as e:
-        await ctx.send(f"❌ An error occurred: {e}")
+        await ctx.send(f"[Error] An error occurred: {e}")
 
 
 @bot.command()
@@ -356,12 +360,12 @@ async def champ(ctx):
         
         # Verify standings data exists
         if df.empty:
-            await ctx.send("🏁 No standings data found for the current season yet.")
+            await ctx.send("No standings data found for the current season yet.")
             return
 
         # Setup standings overview embed details
         embed = discord.Embed(
-            title="🏆 F1 Drivers' Championship Top 10",
+            title="F1 Drivers' Championship Top 10",
             description="",
             color=discord.Color.gold(),
             timestamp=datetime.now()
@@ -376,8 +380,8 @@ async def champ(ctx):
             # Safely extract constructor name if available
             team = row['constructorNames'][0] if len(row['constructorNames']) > 0 else "Unknown"
             
-            # Use medals for podium spots
-            medal = "🥇" if pos == 1 else "🥈" if pos == 2 else "🥉" if pos == 3 else f"**{pos}.**"
+            # Use text formatting instead of medals
+            medal = f"**{pos}.**"
             description += f"{medal} **{name}** ({team}) — `{points} pts` \n"
 
         embed.description = description
@@ -385,7 +389,7 @@ async def champ(ctx):
         await ctx.send(embed=embed)
         
     except Exception as e:
-        await ctx.send(f" Error: {e}")
+        await ctx.send(f"Error: {e}")
 
 
 @bot.command()
@@ -404,12 +408,12 @@ async def const(ctx):
         df = await asyncio.to_thread(get_const)
         
         if df.empty:
-            await ctx.send("🏁 No constructor standings found for the current season yet.")
+            await ctx.send("No constructor standings found for the current season yet.")
             return
 
         # Setup constructor ranking details inside an embed
         embed = discord.Embed(
-            title="🏎️ F1 Constructor Standings",
+            title="F1 Constructor Standings",
             color=discord.Color.red(),
             timestamp=datetime.now()
         )
@@ -423,14 +427,14 @@ async def const(ctx):
             wins = row['wins']
             
             # Format list rows
-            medal = "🥇" if pos == 1 else "🥈" if pos == 2 else "🥉" if pos == 3 else f"**{pos}.**"
+            medal = f"**{pos}.**"
             description += f"{medal} **{team}** — `{points} pts` ({wins} wins)\n"
 
         embed.description = description
         embed.set_footer(text="Data provided by FastF1")
         await ctx.send(embed=embed)
     except Exception as e:
-        await ctx.send(f"❌ Error fetching constructor standings: {e}")
+        await ctx.send(f"[Error] Error fetching constructor standings: {e}")
 
 
 @bot.command()
@@ -449,12 +453,12 @@ async def results(ctx):
         df = await asyncio.to_thread(get_res)
         
         if df.empty:
-            await ctx.send("🏁 No recent race results found.")
+            await ctx.send("No recent race results found.")
             return
 
         # Prepare race details output embed
         embed = discord.Embed(
-            title="🏁 Last Race Results Top 10",
+            title="Last Race Results Top 10",
             color=discord.Color.green(),
             timestamp=datetime.now()
         )
@@ -473,7 +477,7 @@ async def results(ctx):
         embed.set_footer(text="Data provided by FastF1")
         await ctx.send(embed=embed)
     except Exception as e:
-        await ctx.send(f"❌ Error fetching race results: {e}")
+        await ctx.send(f"[Error] Error fetching race results: {e}")
 
 
 @bot.command()
@@ -483,7 +487,7 @@ async def fastest(ctx):
     Usage: !fastest
     """
     # Notify the channel that session telemetry files are being downloaded
-    msg = await ctx.send("⏳ Fetching telemetry for the last race... This might take a few seconds.")
+    msg = await ctx.send("Fetching telemetry for the last race... This might take a few seconds.")
     try:
         # Load and download session telemetry synchronously
         def get_fastest():
@@ -501,14 +505,14 @@ async def fastest(ctx):
         time = str(lap['LapTime']).split('.')[0][-8:] 
         
         embed = discord.Embed(
-            title="⏱️ Fastest Lap (Last Race)",
+            title="Fastest Lap (Last Race)",
             description=f"**Driver:** {driver}\n**Time:** `{time}`",
             color=discord.Color.purple()
         )
         # Edit the status message into the finished embed response
         await msg.edit(content=None, embed=embed)
     except Exception as e:
-        await msg.edit(content=f"❌ Error fetching fastest lap: {e}")
+        await msg.edit(content=f"[Error] Error fetching fastest lap: {e}")
 
 
 @bot.command()
@@ -544,12 +548,12 @@ async def calendar(ctx):
                     break
                     
         if not upcoming:
-            await ctx.send("🏁 No more upcoming races this season.")
+            await ctx.send("No more upcoming races this season.")
             return
 
         # Prepare calendar schedule embed
         embed = discord.Embed(
-            title="📅 Upcoming F1 Races",
+            title="Upcoming F1 Races",
             color=discord.Color.blue()
         )
         
@@ -558,13 +562,13 @@ async def calendar(ctx):
             date_str = event['EventDate'].strftime("%d %b %Y")
             embed.add_field(
                 name=f"Round {event['RoundNumber']}: {event['EventName']}",
-                value=f"📍 {event['Location']}, {event['Country']}\n🗓️ {date_str}",
+                value=f"Location: {event['Location']}, {event['Country']}\nDate: {date_str}",
                 inline=False
             )
             
         await ctx.send(embed=embed)
     except Exception as e:
-        await ctx.send(f"❌ Error fetching calendar: {e}")
+        await ctx.send(f"[Error] Error fetching calendar: {e}")
 
 
 @bot.command()
@@ -596,7 +600,7 @@ async def compare(ctx, driver1: str, driver2: str):
         
         # Verify both driver codes were successfully found
         if d1_row.empty or d2_row.empty:
-            await ctx.send("❌ Could not find one or both drivers. Make sure to use their 3-letter codes (e.g., VER, HAM, LEC).")
+            await ctx.send("Could not find one or both drivers. Make sure to use their 3-letter codes (e.g., VER, HAM, LEC).")
             return
             
         d1 = d1_row.iloc[0]
@@ -604,7 +608,7 @@ async def compare(ctx, driver1: str, driver2: str):
 
         # Structure comparison statistics inside an embed
         embed = discord.Embed(
-            title="🔍 Driver Comparison",
+            title="Driver Comparison",
             description=f"**Current Season Stats**",
             color=discord.Color.orange()
         )
@@ -615,7 +619,7 @@ async def compare(ctx, driver1: str, driver2: str):
             value=f"**Position:** {d1['position']}\n**Points:** {d1['points']}\n**Wins:** {d1['wins']}\n**Team:** {d1['constructorNames'][0]}",
             inline=True
         )
-        embed.add_field(name="🆚", value="\u200b", inline=True)  # Spacer column
+        embed.add_field(name="VS", value="\u200b", inline=True)  # Spacer column
         embed.add_field(
             name=f"{d2['givenName']} {d2['familyName']} ({driver2})",
             value=f"**Position:** {d2['position']}\n**Points:** {d2['points']}\n**Wins:** {d2['wins']}\n**Team:** {d2['constructorNames'][0]}",
@@ -624,7 +628,7 @@ async def compare(ctx, driver1: str, driver2: str):
         
         await ctx.send(embed=embed)
     except Exception as e:
-        await ctx.send(f"❌ Error comparing drivers: {e}")
+        await ctx.send(f"[Error] Error comparing drivers: {e}")
 
 
 @bot.command()
@@ -648,14 +652,14 @@ async def circuit(ctx, *, country: str):
         
         # If no host country matches, reply with error
         if match.empty:
-            await ctx.send(f"❌ Could not find a race in `{country}` for this season.")
+            await ctx.send(f"Could not find a race in `{country}` for this season.")
             return
             
         event = match.iloc[0]
         
         # Prepare track data embed display
         embed = discord.Embed(
-            title=f"🛣️ {event['OfficialEventName']}",
+            title=f"{event['OfficialEventName']}",
             color=discord.Color.teal()
         )
         embed.add_field(name="Location", value=event['Location'], inline=True)
@@ -664,7 +668,7 @@ async def circuit(ctx, *, country: str):
         
         await ctx.send(embed=embed)
     except Exception as e:
-        await ctx.send(f"❌ Error fetching circuit info: {e}")
+        await ctx.send(f"[Error] Error fetching circuit info: {e}")
 
 
 def country_to_emoji(country_name):
@@ -714,7 +718,7 @@ def country_to_emoji(country_name):
     key = country_name.strip().lower() if country_name else ""
     iso = COUNTRY_ISO.get(key)
     if not iso:
-        return "🏁"  # Return F1 Checkered flag as fallback
+        return ""  # Return empty string as fallback
 
     # Shift alpha characters to Unicode regional indicators (A = 127397 + 65)
     OFFSET = 127397
@@ -810,7 +814,7 @@ async def raceweekend(ctx):
 
                 # Insert next up label if session matches index
                 if next_idx == idx:
-                    status = f"➡️ **NEXT UP**\nCountdown: {countdown}"
+                    status = f"☑️ **NEXT UP**\nCountdown: {countdown}"
                 else:
                     status = ""
 
@@ -868,7 +872,7 @@ async def drivers(ctx):
         df = await asyncio.to_thread(get_drivers)
         
         if df.empty:
-            await ctx.send("🏁 No driver data found for the current season.")
+            await ctx.send("No driver data found for the current season.")
             return
 
         embed = discord.Embed(
@@ -895,7 +899,7 @@ async def drivers(ctx):
         await ctx.send(embed=embed)
         
     except Exception as e:
-        await ctx.send(f"❌ Error fetching driver list: {e}")
+        await ctx.send(f"[Error] Error fetching driver list: {e}")
 
 
 @bot.command()
@@ -912,6 +916,170 @@ async def download(ctx):
     )
     embed.set_footer(text="Thank you for downloading!")
     await ctx.send(embed=embed)
+
+
+# ==============================================================================
+#                      CHANNEL BINDING & PERSISTENCE CONFIG
+# ==============================================================================
+
+CONFIG_FILE = "bot_config.json"
+
+def load_config():
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, "r") as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"Error loading config: {e}")
+    return {}
+
+def save_config(config):
+    try:
+        with open(CONFIG_FILE, "w") as f:
+            json.dump(config, f, indent=4)
+    except Exception as e:
+        print(f"Error saving config: {e}")
+
+
+@bot.command()
+async def setchannel(ctx, channel: discord.TextChannel = None):
+    """
+    Sets the channel where the bot prints and updates the upcoming race weekend.
+    Usage: !setchannel [#channel]
+    """
+    if channel is None:
+        channel = ctx.channel
+    
+    config = load_config()
+    config["channel_id"] = channel.id
+    config["message_id"] = None  # Reset message ID to post a new one
+    save_config(config)
+    
+    await ctx.send(f"[Success] Bot channel has been set to {channel.mention}. The next race weekend schedule will be posted and updated there. You can also use the `!raceweekend` command to check manually.")
+
+
+async def update_weekend_channel_task():
+    """
+    Background task that runs continuously to update the countdowns and details
+    for the next race weekend in the configured channel.
+    """
+    await bot.wait_until_ready()
+    while not bot.is_closed():
+        try:
+            config = load_config()
+            channel_id = config.get("channel_id")
+            if channel_id:
+                channel = bot.get_channel(channel_id)
+                if channel is None:
+                    try:
+                        channel = await bot.fetch_channel(channel_id)
+                    except Exception:
+                        pass
+                
+                if channel:
+                    tz_local = pytz.timezone("America/Port_of_Spain")
+                    # Load current F1 season schedule
+                    schedule_df = await asyncio.to_thread(
+                        fastf1.get_event_schedule, datetime.now().year, include_testing=True
+                    )
+                    
+                    next_event = None
+                    # Find the next weekend where the last session (the race) is in the future
+                    for _, event in schedule_df.iterrows():
+                        last_session_time = None
+                        for i in range(7, 0, -1):
+                            key = f"Session{i}DateUtc"
+                            if key in event and not pd.isna(event[key]):
+                                last_session_time = event[key]
+                                if last_session_time.tzinfo is None:
+                                    last_session_time = pytz.utc.localize(last_session_time)
+                                break
+                        if last_session_time and last_session_time > datetime.now(pytz.utc):
+                            next_event = event
+                            break
+                    
+                    if next_event is not None:
+                        country_flag = country_to_emoji(next_event['Country'])
+                        is_sprint = False
+                        for key in ["SprintDateUtc", "Session3DateUtc", "Sprint Shootout"]:
+                            if key in next_event and not pd.isna(next_event[key]):
+                                is_sprint = True
+                                break
+                                
+                        if is_sprint:
+                            session_names = ["Practice 1", "Sprint Qualifying", "Sprint Race", "Qualifying", "Race"]
+                            session_keys = ["Session1DateUtc", "Session2DateUtc", "Session3DateUtc", "Session4DateUtc", "Session5DateUtc"]
+                        else:
+                            session_names = ["Practice 1", "Practice 2", "Practice 3", "Qualifying", "Race"]
+                            session_keys = ["Session1DateUtc", "Session2DateUtc", "Session3DateUtc", "Session4DateUtc", "Session5DateUtc"]
+
+                        session_list = []
+                        for name, key in zip(session_names, session_keys):
+                            if key in next_event and not pd.isna(next_event[key]):
+                                session_time = next_event[key]
+                                if session_time.tzinfo is None:
+                                    session_time = pytz.utc.localize(session_time)
+                                session_list.append((name, session_time))
+
+                        # Determine next session index
+                        next_session_index = None
+                        for idx, (_, time) in enumerate(session_list):
+                            if (time - datetime.now(pytz.utc)).total_seconds() > 0:
+                                next_session_index = idx
+                                break
+
+                        def build_embed(next_idx=None):
+                            embed = discord.Embed(
+                                title=f"{country_flag} {next_event['EventName']}",
+                                description=f"**Circuit:** {next_event['Location']}\n**Round:** {next_event['RoundNumber']}\n\n*Use `!raceweekend` command to check details manually.*",
+                                color=discord.Color.red()
+                            )
+                            now = datetime.now(pytz.utc)
+
+                            for idx, (session_name, session_time) in enumerate(session_list):
+                                diff = session_time - now
+                                days, remainder = divmod(max(diff.total_seconds(), 0), 86400)
+                                hours, remainder = divmod(remainder, 3600)
+                                minutes, _ = divmod(remainder, 60)
+                                countdown = f"{int(days)}d {int(hours)}h {int(minutes)}m" if diff.total_seconds() > 0 else "Ongoing or finished"
+
+                                local_time = session_time.astimezone(tz_local)
+                                formatted_time = local_time.strftime("%A, %d %B %Y • %I:%M %p %Z")
+
+                                if next_idx == idx:
+                                    status = f"☑️ **NEXT UP**\nCountdown: {countdown}"
+                                else:
+                                    status = ""
+
+                                embed.add_field(
+                                    name=session_name,
+                                    value=f"{formatted_time}\n{status}",
+                                    inline=False
+                                )
+                            return embed
+
+                        embed = build_embed(next_session_index)
+                        
+                        message_id = config.get("message_id")
+                        msg = None
+                        if message_id:
+                            try:
+                                msg = await channel.fetch_message(message_id)
+                            except Exception:
+                                pass
+                        
+                        if msg:
+                            await msg.edit(embed=embed)
+                        else:
+                            msg = await channel.send(embed=embed)
+                            config["message_id"] = msg.id
+                            save_config(config)
+                    else:
+                        pass
+        except Exception as e:
+            print(f"Error in update_weekend_channel_task: {e}")
+        
+        await asyncio.sleep(60)
 
 
 @bot.command()
