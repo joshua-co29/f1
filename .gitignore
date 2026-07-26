@@ -1,0 +1,6 @@
+.env
+discord.log
+f1_cache/
+fastf1_cache/
+__pycache__/
+*.pyc

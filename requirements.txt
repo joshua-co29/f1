@@ -1,0 +1,6 @@
+discord.py
+python-dotenv
+fastf1
+pandas
+pytz
+aiohttp
